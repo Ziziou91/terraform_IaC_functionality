@@ -35,6 +35,13 @@ Alternatively, we can pass environment veriable in the CLI like so:
 ```bash
 terraform apply -var super_secret_variable=$super_secret_variable
 ```
+## variables.tf and terraform.tfvars
+
+HCL allows us to separate the **declaration** and **value assignment** of the variables used into a **variable.tf** file and **terraform.tfvars** file. 
+
+We can share the variables.tf file, and outline what inputs the Terraform configuration expects, without having to provide sensitive details about my architecture.
+
+# Dynamic Resource Creation
 
 ## The for_each Meta-Argument
 
@@ -46,3 +53,15 @@ I couldn't use a for_each loop to create the aws_instances. I needed to pass in 
 
 cat /var/log/cloud-init-output.log
 terraform apply -target=github_repository.terraform_IaC_functionality -target=github_repository_file.add_file
+
+# S3 State Storage
+
+"state" refers to the data structure that Terraform uses to keep track of the infrastructure resources it manages. Allows us to track the config and all associated data.
+
+**Using an AWS S3 bucket for state storage means that:**
+
+- Shared state: when working in a team, multiple team members can access and work on the same state file.
+- State Locking: We can use DynamoDB in conjunction with S3 to lock the state, preventing concurrent operations that could corrupt the state file.
+- Encryption: S3 supports server-side encryption (SSE) to protect your state file at rest. 
+- Disaster Recovery: Storing state in a highly durable service like S3 ensures that your state file is available even in the event of hardware failure or other disasters.
+
