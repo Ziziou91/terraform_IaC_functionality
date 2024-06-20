@@ -1,10 +1,3 @@
-terraform {
-  backend "s3" {
-    bucket = "zizou91-terraform-state"
-    key = "terraform-project"
-    region = "eu-west-1"
-  }
-}
 
 provider "aws" {
 	region = "eu-west-1"
@@ -14,7 +7,7 @@ provider "aws" {
 
 ## ========VPC========
 resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
+  cidr_block = var.vpc_cidr_block
 }
 
 ## ========INTERNET GATEWAY========
@@ -27,11 +20,11 @@ resource "aws_route_table" "app-route-table" {
     vpc_id = aws_vpc.main.id
     
     route {
-        cidr_block = "0.0.0.0/0"
+        cidr_block = var.route_table_ips.ip4_cidr_block
         gateway_id = aws_internet_gateway.gw.id
     }
     route {
-        ipv6_cidr_block = "::/0"
+        ipv6_cidr_block = var.route_table_ips.ipv6_cidr_block
         gateway_id = aws_internet_gateway.gw.id
     }
 
