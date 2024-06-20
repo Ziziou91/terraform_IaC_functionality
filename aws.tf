@@ -13,6 +13,10 @@ resource "aws_vpc" "main" {
 ## ========INTERNET GATEWAY========
 resource "aws_internet_gateway" "gw" {
     vpc_id = aws_vpc.main.id
+
+    tags = {
+        Name = "terraform-app-gw"
+    }
 }
 
 ## ========ROUTE TABLE========
@@ -29,10 +33,12 @@ resource "aws_route_table" "app-route-table" {
     }
 
     tags = {
-        Name = "terraform-app"
+        Name = "terraform-app-rt"
     }
 }
 
+
+## ========SUBNETS========
 resource "aws_subnet" "subnet" {
   for_each = var.subnets
 
@@ -102,12 +108,13 @@ resource "aws_instance" "db" {
 }
 
 ## ========CREATE APP========
-resource "aws_instance" "app" {
-    ami = var.app_instance.ami
+resource "aws_launch_configuration" "app" {
+    name = "aws_launch_configuration"
+    image_id = var.app_instance.ami
     instance_type = var.app_instance.instance_type
     availability_zone = var.app_instance.availability_zone
     key_name = var.key_name
-    vpc_security_group_ids = [
+    security_groups = [
         for sg in var.app_instance.security_groups : aws_security_group.sg[sg].id
     ]
     subnet_id = aws_subnet.subnet[var.app_instance.subnet].id
@@ -118,8 +125,113 @@ resource "aws_instance" "app" {
         db_ip = aws_instance.db.private_ip
     })
 
+    lifecycle {
+       create_before_destroy = true
+    }
+
     tags = {
         Name = var.app_instance.name
     }
 
+}
+
+## ========AUTOSCALER========
+resource "aws_autoscaling_group" "app" {
+  launch_configuration = aws_launch_configuration.app.id
+  min_size             = 2
+  max_size             = 3
+  desired_capacity     = 2
+  vpc_zone_identifier  = [aws_subnet.public1.id, aws_subnet.public2.id]
+ 
+  tag {
+    key                 = "Name"
+    value               = "app-instance"
+    propagate_at_launch = true
+  }
+ 
+  target_group_arns = [
+    aws_lb_target_group.app_http.arn,
+    aws_lb_target_group.app_ssh.arn
+  ]
+}
+
+## ========LOAD BALANCER========
+resource "aws_lb" "app" {
+  name               = "app-load-balancer"
+  internal           = false
+  load_balancer_type = "network"
+  subnets            = [aws_subnet.public1.id, aws_subnet.public2.id]
+ 
+  enable_deletion_protection = false
+ 
+  tags = {
+    Name = "app-load-balancer"
+  }
+}
+ 
+resource "aws_lb_target_group" "app_http" {
+  name     = "app-http-target-group"
+  port     = 80
+  protocol = "TCP"
+  vpc_id   = aws_vpc.main.id
+ 
+  health_check {
+    interval            = 30
+    protocol            = "HTTP"
+    path                = "/"
+    timeout             = 5
+    healthy_threshold   = 5
+    unhealthy_threshold = 2
+  }
+ 
+  tags = {
+    Name = "app-http-target-group"
+  }
+}
+ 
+resource "aws_lb_target_group" "app_ssh" {
+  name     = "app-ssh-target-group"
+  port     = 22
+  protocol = "TCP"
+  vpc_id   = aws_vpc.main.id
+ 
+  health_check {
+    interval            = 30
+    protocol            = "TCP"
+    timeout             = 5
+    healthy_threshold   = 5
+    unhealthy_threshold = 2
+  }
+ 
+  tags = {
+    Name = "app-ssh-target-group"
+  }
+}
+ 
+resource "aws_lb_listener" "app_http" {
+  load_balancer_arn = aws_lb.app.arn
+  port              = 80
+  protocol          = "TCP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_http.arn
+  }
+ 
+  tags = {
+    Name = "app-http-listener"
+  }
+}
+ 
+resource "aws_lb_listener" "app_ssh" {
+  load_balancer_arn = aws_lb.app.arn
+  port              = 22
+  protocol          = "TCP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_ssh.arn
+  }
+ 
+  tags = {
+    Name = "app-ssh-listener"
+  }
 }
